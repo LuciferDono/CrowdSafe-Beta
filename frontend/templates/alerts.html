@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+{% block page_title %}Alerts{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+    <select class="form-select form-select-sm" id="filterLevel" onchange="loadAlerts()" style="max-width:150px">
+        <option value="">All Levels</option>
+        <option value="CRITICAL">Critical</option>
+        <option value="WARNING">Warning</option>
+        <option value="CAUTION">Caution</option>
+    </select>
+    <select class="form-select form-select-sm" id="filterResolved" onchange="loadAlerts()" style="max-width:150px">
+        <option value="">All</option>
+        <option value="false" selected>Unresolved</option>
+        <option value="true">Resolved</option>
+    </select>
+    <span class="text-secondary small ms-2" id="alertCount"></span>
+</div>
+<div class="panel">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Camera</th>
+                    <th>Level</th>
+                    <th>Message</th>
+                    <th>Risk Score</th>
+                    <th>Status</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="alertsBody">
+                <tr><td colspan="7" class="text-center text-secondary py-4">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/alerts.js') }}"></script>{% endblock %}

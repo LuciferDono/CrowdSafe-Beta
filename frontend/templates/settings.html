@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block content %}
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="panel mb-3">
+            <div class="panel-header"><h6>Risk Thresholds</h6></div>
+            <div class="mb-3"><label class="form-label">Density Warning (p/m&sup2;)</label><input type="number" class="form-control form-control-sm" id="setDensityWarn" step="0.1"></div>
+            <div class="mb-3"><label class="form-label">Density Critical (p/m&sup2;)</label><input type="number" class="form-control form-control-sm" id="setDensityCrit" step="0.1"></div>
+            <div class="mb-3"><label class="form-label">Stagnant Velocity (m/s)</label><input type="number" class="form-control form-control-sm" id="setVelStagnant" step="0.1"></div>
+            <div class="row g-2 mb-3">
+                <div class="col"><label class="form-label">W Density</label><input type="number" class="form-control form-control-sm" id="setWD" step="0.1" min="0" max="1"></div>
+                <div class="col"><label class="form-label">W Surge</label><input type="number" class="form-control form-control-sm" id="setWS" step="0.1" min="0" max="1"></div>
+                <div class="col"><label class="form-label">W Velocity</label><input type="number" class="form-control form-control-sm" id="setWV" step="0.1" min="0" max="1"></div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="saveRiskSettings()">Save Risk Settings</button>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="panel mb-3">
+            <div class="panel-header"><h6>Alert Settings</h6></div>
+            <div class="mb-3"><label class="form-label">Cooldown (seconds)</label><input type="number" class="form-control form-control-sm" id="setCooldown" min="10"></div>
+            <div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="setEmailEnabled"><label class="form-check-label">Email Alerts</label></div>
+            <div class="form-check mb-3"><input class="form-check-input" type="checkbox" id="setSmsEnabled"><label class="form-check-label">SMS Alerts</label></div>
+            <hr>
+            <h6 class="mb-2"><i class="bi bi-telegram me-1"></i>Telegram Notifications</h6>
+            <div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="setTelegramEnabled"><label class="form-check-label">Enable Telegram Alerts</label></div>
+            <div class="mb-2"><label class="form-label">Bot Token</label><input type="text" class="form-control form-control-sm" id="setTelegramToken" placeholder="123456:ABC-DEF..."></div>
+            <div class="mb-3"><label class="form-label">Chat ID</label><input type="text" class="form-control form-control-sm" id="setTelegramChatId" placeholder="-1001234567890"></div>
+            <small class="text-secondary d-block mb-3">Create a bot via <a href="https://t.me/BotFather" target="_blank" class="text-info">@BotFather</a>, then get your Chat ID from <a href="https://t.me/userinfobot" target="_blank" class="text-info">@userinfobot</a></small>
+            <button class="btn btn-primary btn-sm" onclick="saveAlertSettings()">Save Alert Settings</button>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h6>AI Configuration</h6></div>
+            <div class="mb-3"><label class="form-label">Model</label><input type="text" class="form-control form-control-sm" id="setModel" readonly></div>
+            <div class="mb-3"><label class="form-label">Confidence Threshold</label><input type="number" class="form-control form-control-sm" id="setConf" step="0.05" min="0.1" max="0.95"></div>
+            <div class="mb-3"><label class="form-label">IoU Threshold</label><input type="number" class="form-control form-control-sm" id="setIou" step="0.05" min="0.1" max="0.95"></div>
+            <button class="btn btn-primary btn-sm" onclick="saveAiSettings()">Save AI Settings</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/settings.js') }}"></script>{% endblock %}

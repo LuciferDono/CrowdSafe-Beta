@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block page_title %}Analytics{% endblock %}
+{% block content %}
+<!-- Controls Bar -->
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <select class="form-select form-select-sm" id="cameraSelect" style="max-width:200px">
+        <option value="">Select Camera</option>
+    </select>
+
+    <div class="btn-group btn-group-sm" role="group">
+        <button type="button" class="btn btn-outline-secondary range-btn" data-range="1h">1H</button>
+        <button type="button" class="btn btn-outline-secondary range-btn" data-range="24h">24H</button>
+        <button type="button" class="btn btn-outline-secondary range-btn" data-range="7d">7D</button>
+        <button type="button" class="btn btn-outline-secondary range-btn active" data-range="30d">30D</button>
+        <button type="button" class="btn btn-outline-secondary range-btn" data-range="all">All</button>
+    </div>
+
+    <input type="datetime-local" class="form-control form-control-sm" id="startDate" style="max-width:190px" title="From">
+    <span class="text-secondary small">to</span>
+    <input type="datetime-local" class="form-control form-control-sm" id="endDate" style="max-width:190px" title="To">
+    <button class="btn btn-sm btn-primary" onclick="applyCustomRange()">Apply</button>
+
+    <div class="dropdown ms-auto">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+            <i class="bi bi-download me-1"></i>Export
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#" onclick="exportData('csv'); return false;"><i class="bi bi-filetype-csv me-2"></i>CSV</a></li>
+            <li><a class="dropdown-item" href="#" onclick="exportData('docx'); return false;"><i class="bi bi-file-earmark-word me-2"></i>DOCX</a></li>
+            <li><a class="dropdown-item" href="#" onclick="exportData('pdf'); return false;"><i class="bi bi-file-earmark-pdf me-2"></i>PDF</a></li>
+            <li><a class="dropdown-item" href="#" onclick="exportData('md'); return false;"><i class="bi bi-markdown me-2"></i>Markdown</a></li>
+        </ul>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-label">Avg People</div>
+            <div class="stat-value" id="sumAvgPeople">-</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-label">Peak Count</div>
+            <div class="stat-value" id="sumMaxPeople">-</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-label">Avg Density</div>
+            <div class="stat-value" id="sumAvgDensity">-</div>
+            <div class="stat-sub text-secondary small" id="sumMaxDensity"></div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-label">Max Risk</div>
+            <div class="stat-value" id="sumMaxRisk">-</div>
+            <div class="stat-sub text-secondary small" id="sumAvgRisk"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Extra summary row -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-label">Avg Velocity</div>
+            <div class="stat-value" id="sumAvgVelocity">-</div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-label">Total Records</div>
+            <div class="stat-value" id="sumTotalRecords">-</div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="panel">
+            <div class="panel-header"><h6>Person Count</h6></div>
+            <div style="height:250px"><canvas id="personChart"></canvas></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="panel">
+            <div class="panel-header"><h6>Density (p/m&sup2;)</h6></div>
+            <div style="height:250px"><canvas id="densityChartA"></canvas></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="panel">
+            <div class="panel-header"><h6>Risk Score (%)</h6></div>
+            <div style="height:250px"><canvas id="riskChart"></canvas></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="panel">
+            <div class="panel-header"><h6>Velocity (m/s)</h6></div>
+            <div style="height:250px"><canvas id="velocityChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Table -->
+<div class="panel mb-3">
+    <div class="panel-header d-flex align-items-center justify-content-between" style="cursor:pointer" onclick="toggleDataTable()">
+        <h6 class="mb-0"><i class="bi bi-table me-2"></i>Data Table</h6>
+        <i class="bi bi-chevron-down" id="tableToggleIcon"></i>
+    </div>
+    <div id="dataTableWrap" style="display:none">
+        <div class="table-responsive" style="max-height:400px; overflow-y:auto">
+            <table class="table table-hover table-sm mb-0 align-middle">
+                <thead class="sticky-top" style="background:#1a1d24">
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Count</th>
+                        <th>Density</th>
+                        <th>Velocity</th>
+                        <th>Surge</th>
+                        <th>Risk Score</th>
+                        <th>Risk Level</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody">
+                    <tr><td colspan="7" class="text-center text-secondary py-3">No data</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/analytics.js') }}"></script>{% endblock %}

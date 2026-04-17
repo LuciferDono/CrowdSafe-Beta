@@ -1,0 +1,16 @@
+Flask==3.1.0
+Flask-SQLAlchemy==3.1.1
+Flask-SocketIO==5.5.1
+simple-websocket==1.1.0
+ultralytics==8.3.50
+opencv-python-headless==4.10.0.84
+numpy==2.2.1
+lapx>=0.5.2
+PyJWT==2.10.1
+bcrypt==4.2.1
+Pillow==11.1.0
+gunicorn==23.0.0
+APScheduler==3.10.4
+python-dotenv==1.0.1
+python-docx==1.1.2
+fpdf2==2.8.2

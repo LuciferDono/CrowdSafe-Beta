@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1280px;
+    height: 640px;
+    background: #0a0c10;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Subtle grid background */
+  .grid-bg {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(79,143,247,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79,143,247,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Radial glow behind center */
+  .glow {
+    position: absolute;
+    width: 700px;
+    height: 700px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(79,143,247,0.12) 0%, rgba(79,143,247,0.03) 40%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  /* Secondary glow */
+  .glow-danger {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    top: 20%;
+    right: 5%;
+    background: radial-gradient(circle, rgba(239,68,68,0.08) 0%, transparent 60%);
+    border-radius: 50%;
+  }
+
+  .container {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 50px 70px;
+    gap: 50px;
+  }
+
+  .left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(79,143,247,0.12);
+    border: 1px solid rgba(79,143,247,0.25);
+    color: #4f8ff7;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 20px;
+    width: fit-content;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .badge .dot {
+    width: 7px;
+    height: 7px;
+    background: #4f8ff7;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  h1 {
+    font-size: 58px;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.05;
+    letter-spacing: -1.5px;
+  }
+
+  h1 span {
+    background: linear-gradient(135deg, #4f8ff7 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 18px;
+    color: #6b7280;
+    line-height: 1.5;
+    max-width: 440px;
+  }
+
+  .tech-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+
+  .tech-tag {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #9ca3af;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: 6px;
+  }
+
+  .right {
+    width: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Mock dashboard card */
+  .dashboard-mock {
+    width: 400px;
+    background: rgba(28,31,38,0.85);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 24px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset;
+  }
+
+  .dash-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .dash-title {
+    color: #d1d5db;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .risk-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .risk-critical {
+    background: rgba(239,68,68,0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239,68,68,0.3);
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .metric-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .metric-label {
+    color: #6b7280;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .metric-value.accent { color: #4f8ff7; }
+  .metric-value.warning { color: #f59e0b; }
+  .metric-value.danger { color: #ef4444; }
+  .metric-value.success { color: #22c55e; }
+
+  /* Mini bar chart */
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 50px;
+    padding-top: 8px;
+  }
+
+  .bar {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    min-width: 6px;
+  }
+
+  .bar-safe { background: rgba(34,197,94,0.6); }
+  .bar-caution { background: rgba(245,158,11,0.6); }
+  .bar-warning { background: rgba(249,115,22,0.6); }
+  .bar-critical { background: rgba(239,68,68,0.6); }
+
+  .chart-label {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+  }
+
+  .chart-label span {
+    font-size: 10px;
+    color: #4b5563;
+  }
+
+  /* Scanning line effect */
+  .scan-line {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #4f8ff7, transparent);
+    opacity: 0.4;
+  }
+
+  /* Corner accents */
+  .corner {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-color: rgba(79,143,247,0.3);
+    border-style: solid;
+    border-width: 0;
+  }
+  .corner.tl { top: 20px; left: 20px; border-top-width: 2px; border-left-width: 2px; }
+  .corner.tr { top: 20px; right: 20px; border-top-width: 2px; border-right-width: 2px; }
+  .corner.bl { bottom: 20px; left: 20px; border-bottom-width: 2px; border-left-width: 2px; }
+  .corner.br { bottom: 20px; right: 20px; border-bottom-width: 2px; border-right-width: 2px; }
+</style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div class="glow"></div>
+  <div class="glow-danger"></div>
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+
+  <div class="container">
+    <div class="left">
+      <div class="badge"><div class="dot"></div> AI-Powered Monitoring</div>
+      <h1>Crowd<span>Safe</span></h1>
+      <div class="subtitle">
+        Real-time crowd density monitoring and stampede prevention using computer vision and machine learning.
+      </div>
+      <div class="tech-row">
+        <div class="tech-tag">YOLOv11s</div>
+        <div class="tech-tag">BoT-SORT</div>
+        <div class="tech-tag">DBSCAN</div>
+        <div class="tech-tag">Flask</div>
+        <div class="tech-tag">OpenCV</div>
+        <div class="tech-tag">Socket.IO</div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="dashboard-mock">
+        <div class="dash-header">
+          <div class="dash-title">Live Analysis</div>
+          <div class="risk-badge risk-critical">Critical</div>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">People</div>
+            <div class="metric-value accent">247</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Density</div>
+            <div class="metric-value warning">5.8 p/m&sup2;</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Risk Score</div>
+            <div class="metric-value danger">82%</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Flow</div>
+            <div class="metric-value success">0.73</div>
+          </div>
+        </div>
+
+        <div class="dash-title" style="margin-bottom: 8px; font-size: 12px;">Risk History</div>
+        <div class="bar-chart">
+          <div class="bar bar-safe" style="height: 20%"></div>
+          <div class="bar bar-safe" style="height: 25%"></div>
+          <div class="bar bar-safe" style="height: 18%"></div>
+          <div class="bar bar-caution" style="height: 35%"></div>
+          <div class="bar bar-caution" style="height: 42%"></div>
+          <div class="bar bar-caution" style="height: 38%"></div>
+          <div class="bar bar-warning" style="height: 55%"></div>
+          <div class="bar bar-warning" style="height: 60%"></div>
+          <div class="bar bar-warning" style="height: 52%"></div>
+          <div class="bar bar-critical" style="height: 70%"></div>
+          <div class="bar bar-critical" style="height: 78%"></div>
+          <div class="bar bar-critical" style="height: 85%"></div>
+          <div class="bar bar-critical" style="height: 90%"></div>
+          <div class="bar bar-critical" style="height: 95%"></div>
+          <div class="bar bar-critical" style="height: 82%"></div>
+        </div>
+        <div class="chart-label">
+          <span>15 min ago</span>
+          <span>Now</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="scan-line"></div>
+</body>
+</html>

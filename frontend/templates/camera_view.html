@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Video Analysis{% endblock %}
+{% block page_title %}<span id="cameraName">Video Analysis</span>{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+    <a href="/cameras" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+    <span class="badge bg-secondary" id="cameraStatus">offline</span>
+    <div class="ms-auto d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" id="btnHeatmap" onclick="toggleHeatmap()">Heatmap</button>
+        <button class="btn btn-sm btn-outline-danger" onclick="stopCamera()">Stop</button>
+        <a class="btn btn-sm btn-outline-info d-none" id="btnDownload" onclick="downloadRecording()"><i class="bi bi-download me-1"></i>Download</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-9">
+        <div class="video-container">
+            <img id="videoFeed" class="video-feed" alt="Video Feed">
+            <div class="video-overlay" id="videoOverlay">
+                <div class="text-center">
+                    <i class="bi bi-camera-video" style="font-size:2rem"></i>
+                    <p class="mt-2 mb-0">Stream not active</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-3">
+        <div class="panel mb-3">
+            <div class="panel-header"><h6>Detection</h6></div>
+            <table class="table table-sm mb-0">
+                <tbody>
+                    <tr><td class="text-secondary">People</td><td class="text-end fw-bold" id="metricPeople">0</td></tr>
+                    <tr><td class="text-secondary">Density</td><td class="text-end fw-bold" id="metricDensity">0.00</td></tr>
+                    <tr><td class="text-secondary">Avg Velocity</td><td class="text-end fw-bold" id="metricVelocity">0.00</td></tr>
+                    <tr><td class="text-secondary">Surge Rate</td><td class="text-end fw-bold" id="metricSurge">0.00</td></tr>
+                    <tr><td class="text-secondary">Capacity</td><td class="text-end fw-bold" id="metricCapacity">0%</td></tr>
+                    <tr><td class="text-secondary">Risk Score</td><td class="text-end fw-bold" id="metricRiskScore">0%</td></tr>
+                    <tr><td class="text-secondary">Risk Level</td><td class="text-end fw-bold" id="metricRiskLevel">SAFE</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="panel mb-3">
+            <div class="panel-header"><h6>ML Analysis</h6></div>
+            <table class="table table-sm mb-0">
+                <tbody>
+                    <tr><td class="text-secondary">Clusters</td><td class="text-end fw-bold" id="metricClusters">0</td></tr>
+                    <tr><td class="text-secondary">Flow Coherence</td><td class="text-end fw-bold" id="metricCoherence">0.00</td></tr>
+                    <tr><td class="text-secondary">Crowd Pressure</td><td class="text-end fw-bold" id="metricPressure">0.00</td></tr>
+                    <tr><td class="text-secondary">Anomalies</td><td class="text-end fw-bold" id="metricAnomalies">0</td></tr>
+                    <tr><td class="text-secondary">Density Trend</td><td class="text-end fw-bold" id="metricDensityTrend">stable</td></tr>
+                    <tr><td class="text-secondary">Risk Trend</td><td class="text-end fw-bold" id="metricRiskTrend">stable</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><h6>Density Trend</h6></div>
+            <canvas id="densityChart" height="160"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>const CAMERA_ID = "{{ camera_id }}";</script>
+<script src="{{ url_for('static', filename='js/camera_view.js') }}"></script>
+{% endblock %}
