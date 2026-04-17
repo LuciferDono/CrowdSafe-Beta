@@ -1,7 +1,9 @@
 from flask import Flask
 from config import Config
-from backend.extensions import db, socketio
+from backend.extensions import db, socketio, limiter
 import os
+import secrets
+import stat
 
 
 def create_app(config_class=Config):
@@ -21,6 +23,7 @@ def create_app(config_class=Config):
     # Init extensions
     db.init_app(app)
     socketio.init_app(app, async_mode='threading', cors_allowed_origins='*')
+    limiter.init_app(app)
 
     # Setup logging
     from backend.utils.logger import setup_logging
@@ -36,6 +39,9 @@ def create_app(config_class=Config):
     from backend.api.settings_api import settings_bp
     from backend.api.users import users_bp
     from backend.api.system import system_bp
+    from backend.api.copilot import copilot_bp
+    from backend.api.forecast import forecast_bp
+    from backend.api.search import search_bp
 
     app.register_blueprint(pages_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -46,6 +52,9 @@ def create_app(config_class=Config):
     app.register_blueprint(settings_bp, url_prefix='/api/settings')
     app.register_blueprint(users_bp, url_prefix='/api/users')
     app.register_blueprint(system_bp, url_prefix='/api/system')
+    app.register_blueprint(copilot_bp, url_prefix='/api/copilot')
+    app.register_blueprint(forecast_bp, url_prefix='/api/forecast')
+    app.register_blueprint(search_bp, url_prefix='/api/search')
 
     # Register websocket events
     from backend.websockets import events  # noqa: F401
@@ -64,16 +73,28 @@ def _ensure_defaults(app):
     from backend.models.user import User
     from backend.models.setting import Setting
 
-    if User.query.filter_by(username='admin').first() is None:
+    admin_username = app.config.get('ADMIN_USERNAME', 'admin')
+    if User.query.filter_by(username=admin_username).first() is None:
+        configured_pwd = app.config.get('ADMIN_PASSWORD', '') or ''
+        generated = not configured_pwd
+        password = configured_pwd if configured_pwd else secrets.token_urlsafe(24)
+
         admin = User(
-            username='admin',
-            email='admin@crowdsafe.local',
+            username=admin_username,
+            email=f'{admin_username}@crowdsafe.local',
             full_name='Administrator',
             role='admin',
             is_active=True,
         )
-        admin.set_password('admin123')
+        admin.set_password(password)
         db.session.add(admin)
+
+        if generated:
+            _write_first_boot_credentials(app, admin_username, password)
+            app.logger.warning(
+                "First-boot admin credentials written to logs/FIRST_BOOT_CREDENTIALS.txt. "
+                "Login, change the password immediately, then delete the file."
+            )
 
     defaults = [
         ('general', 'app_name', 'CrowdSafe'),
@@ -100,3 +121,34 @@ def _ensure_defaults(app):
             db.session.add(Setting(category=cat, key=key, value=val))
 
     db.session.commit()
+
+
+def _write_first_boot_credentials(app, username: str, password: str) -> None:
+    """Write generated admin credentials to a restricted-permission file."""
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    path = os.path.join(logs_dir, 'FIRST_BOOT_CREDENTIALS.txt')
+
+    content = (
+        "CrowdSafe First-Boot Admin Credentials\n"
+        "======================================\n"
+        f"Username: {username}\n"
+        f"Password: {password}\n\n"
+        "ACTION REQUIRED:\n"
+        "  1. Log in immediately.\n"
+        "  2. Change the password.\n"
+        "  3. Delete this file.\n"
+    )
+
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(content)
+    except Exception:
+        os.close(fd)
+        raise
+
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass

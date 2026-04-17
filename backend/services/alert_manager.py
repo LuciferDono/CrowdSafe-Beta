@@ -6,6 +6,8 @@ from backend.models.alert import Alert
 from backend.models.camera import Camera
 from backend.models.setting import Setting
 from backend.services.telegram_service import send_alert as telegram_send
+from backend.services.alert_narrator import narrate as vlm_narrate
+from backend.services.incident_reporter import schedule_if_critical
 from backend.utils.helpers import generate_id
 from backend.utils.logger import get_logger
 
@@ -70,12 +72,20 @@ class AlertManager:
                 camera_name = cam.name if cam else camera_id
                 camera_location = cam.location if cam else ''
 
+                narrative = None
+                try:
+                    narrative = vlm_narrate(metrics, frame_jpeg, camera_name=camera_name)
+                except Exception as e:
+                    logger.debug(f"VLM narration skipped: {e}")
+
+                final_message = f"{narrative} — {message}" if narrative else message
+
                 alert = Alert(
                     alert_id=generate_id('ALT'),
                     camera_id=camera_id,
                     risk_level=risk_level,
                     trigger_condition=trigger,
-                    message=message,
+                    message=final_message,
                     metrics_snapshot=json.dumps(metrics, default=str),
                 )
                 db.session.add(alert)
@@ -85,11 +95,18 @@ class AlertManager:
                 # Add camera info for Telegram
                 alert_data['camera_name'] = camera_name
                 alert_data['camera_location'] = camera_location
+                alert_data['narrative'] = narrative
                 socketio.emit('alert', alert_data)
                 socketio.emit('alert', alert_data, room=f'camera_{camera_id}')
 
                 # Telegram notification
                 self._send_telegram(alert_data, frame_jpeg)
+
+                # Auto incident report (CRITICAL only, background thread)
+                try:
+                    schedule_if_critical(alert_data, app)
+                except Exception as e:
+                    logger.debug(f"Incident reporter skipped: {e}")
 
                 logger.info(f"Alert created: {alert.alert_id} - {risk_level} for camera {camera_id}")
                 return alert_data

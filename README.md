@@ -35,11 +35,21 @@ CrowdSafe uses real-time computer vision and machine learning to detect dangerou
 
 ### Real-Time AI Analysis
 - **YOLOv11s person detection** with BoT-SORT multi-object tracking
+- **YOLOv11s-pose crush fusion** — fallen / compressed / arms-up gestures escalate risk ahead of bbox-only signals
 - **DBSCAN spatial clustering** to identify congestion zones
 - **Velocity anomaly detection** using z-score outlier analysis
 - **Flow coherence measurement** — detects crowd panic (uniform vs. chaotic movement)
 - **Crowd pressure estimation** — crush risk from density + velocity variance
 - **EMA trend prediction** for density and risk forecasting
+- **Holt-linear 60s forecast** — projects risk / density / count and ETA-to-critical
+
+### LLM Intelligence Layer (OpenRouter)
+- **Vision-language alert narration** — every alert gets a one-sentence plain-English description of the scene
+- **Operator copilot** (`/api/copilot/chat`) — ask questions grounded in live camera/alert state
+- **Alert triage** (`/api/copilot/triage`) — LLM returns a priority-ranked action plan (JSON)
+- **Natural-language search** (`/api/search/nl`) — "critical alerts on gate A in the last hour" → safe SQLAlchemy query
+- **Auto incident reports** — on any CRITICAL alert, a markdown post-incident report is drafted and stored in `logs/incidents/`
+- Tiered model routing: Gemini 2.5 Flash (default), Claude Sonnet 4.6 (premium), Qwen3-VL 30B (cheap vision), GPT-5 Nano (structured JSON)
 
 ### Professional Video Overlay
 - Corner-style CCTV bounding boxes with track IDs and velocity
@@ -65,6 +75,9 @@ CrowdSafe uses real-time computer vision and machine learning to detect dangerou
 
 ### Platform
 - JWT authentication with role-based access (admin, operator, viewer)
+- **Fail-fast secret key enforcement** — `SECRET_KEY` / `JWT_SECRET_KEY` required in production, ephemeral in dev with explicit warning
+- **Auto-generated first-boot admin password** written to `logs/FIRST_BOOT_CREDENTIALS.txt` (chmod 600) — no more hardcoded `admin123`
+- **Flask-Limiter rate limiting** on auth + LLM endpoints (10/min login, 30/min copilot chat, etc.)
 - Real-time WebSocket updates via Socket.IO
 - Camera management with RTSP, HTTP, USB, and video file support
 - Automatic recording of analyzed video
@@ -170,7 +183,15 @@ python app.py
 
 The app starts at **http://localhost:5001**
 
-**Default login:** `admin` / `admin123`
+### First-boot admin credentials
+
+On first boot, if `ADMIN_PASSWORD` is not set in `.env`, the app **auto-generates** a random password and writes it to:
+
+```
+logs/FIRST_BOOT_CREDENTIALS.txt   (chmod 600)
+```
+
+Log in with that password, change it immediately from the Settings UI, then delete the file. Set `ADMIN_PASSWORD` in `.env` if you prefer to pick your own.
 
 ### Docker Setup
 
@@ -309,6 +330,16 @@ Trigger a WARNING or CRITICAL alert (upload a dense-crowd test video). Check the
 | GET | `/api/system/health` | Health check |
 | GET | `/api/system/stats` | System statistics |
 | GET | `/api/system/logs` | Application logs |
+
+### LLM / Intelligence (new)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/copilot/chat` | Operator Q&A grounded in live state (auth required) |
+| POST | `/api/copilot/triage` | Priority-ranked action plan for active alerts (JSON) |
+| POST | `/api/search/nl` | Natural-language query over metrics + alerts |
+| GET | `/api/forecast/<cam_id>` | 60s Holt-linear risk / density / count forecast |
+| GET | `/api/alerts/<id>/report` | Retrieve auto-drafted incident markdown |
+| POST | `/api/alerts/<id>/report/regenerate` | Re-run the incident drafter |
 
 ---
 

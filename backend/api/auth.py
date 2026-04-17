@@ -1,12 +1,14 @@
 from flask import Blueprint, request, jsonify, make_response
 from backend.services.auth_service import AuthService
 from backend.utils.decorators import token_required
+from backend.extensions import limiter
 from flask import g
 
 auth_bp = Blueprint('auth', __name__)
 
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit('10 per minute;50 per hour')
 def login():
     data = request.get_json() or {}
     username = data.get('username', '').strip()
@@ -33,6 +35,7 @@ def logout():
 
 
 @auth_bp.route('/refresh', methods=['POST'])
+@limiter.limit('20 per minute')
 def refresh():
     data = request.get_json() or {}
     refresh_token = data.get('refresh_token', '')

@@ -6,8 +6,10 @@ from datetime import datetime, timezone
 from backend.extensions import db, socketio
 from backend.models.metric import Metric
 from backend.models.recording import Recording
+from backend.services import pose_engine
 from backend.utils.helpers import generate_id
 from backend.utils.logger import get_logger
+from config import Config
 
 logger = get_logger('video_processor')
 
@@ -43,6 +45,8 @@ class VideoProcessor:
         self._recording_start = None
         self._recorded_frames = 0
         self._last_recording_id = None
+        self._pose_interval = 5  # analyze pose every Nth processed frame
+        self._last_pose_feats = None
 
     @property
     def is_running(self):
@@ -127,6 +131,28 @@ class VideoProcessor:
                     frame.shape,
                 )
 
+                # Pose-fusion crush detection (every Nth frame; best-effort)
+                if (Config.POSE_ENABLED
+                        and self._frame_count % self._pose_interval == 0):
+                    try:
+                        pose_feats = pose_engine.analyze_frame(
+                            frame, density=analysis.get('density', 0.0),
+                        )
+                        if pose_feats is not None:
+                            self._last_pose_feats = pose_feats
+                    except Exception as e:
+                        logger.debug(f"Pose analysis skipped: {e}")
+
+                if self._last_pose_feats is not None:
+                    pf = self._last_pose_feats
+                    ml_analysis['pose'] = {
+                        'n_persons': pf.n_persons,
+                        'n_fallen': pf.n_fallen,
+                        'n_compressed': pf.n_compressed,
+                        'n_arms_up': pf.n_arms_up,
+                        'crush_risk': round(pf.crush_risk, 3),
+                    }
+
                 # Risk scoring (enhanced with ML signals)
                 risk_score, risk_level = self.risk_calculator.calculate(
                     density=analysis['density'],
@@ -136,6 +162,17 @@ class VideoProcessor:
                     crowd_pressure=ml_analysis.get('crowd_pressure', 0),
                     flow_coherence=ml_analysis.get('flow_coherence', 0),
                 )
+
+                # Crush amplifier: pose-derived crush_risk escalates risk.
+                # Any fallen or heavily compressed person is CRITICAL regardless of density.
+                pose_block = ml_analysis.get('pose') or {}
+                crush_risk = pose_block.get('crush_risk', 0.0) or 0.0
+                if crush_risk > 0:
+                    risk_score = max(risk_score, min(1.0, risk_score + 0.4 * crush_risk))
+                if pose_block.get('n_fallen', 0) > 0 or crush_risk >= 0.6:
+                    risk_level = 'CRITICAL'
+                elif crush_risk >= 0.3 and risk_level == 'SAFE':
+                    risk_level = 'WARNING'
 
                 # Feed trend prediction
                 self.crowd_analyzer.update_history(
@@ -188,6 +225,7 @@ class VideoProcessor:
                     'num_anomalies': len(ml_analysis.get('anomalies', [])),
                     'density_trend': ml_analysis.get('trend_prediction', {}).get('density_trend', 'stable'),
                     'risk_trend': ml_analysis.get('trend_prediction', {}).get('risk_trend', 'stable'),
+                    'pose': ml_analysis.get('pose'),
                     'frame_number': self._frame_count,
                     'timestamp': datetime.now(timezone.utc).isoformat(),
                 }

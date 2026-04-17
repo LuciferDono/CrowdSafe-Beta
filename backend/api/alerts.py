@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone
+import os
 from backend.extensions import db
 from backend.models.alert import Alert
 
@@ -68,6 +69,30 @@ def resolve_alert(alert_id):
 def unacknowledged_count():
     count = Alert.query.filter_by(acknowledged=False).count()
     return jsonify({'count': count})
+
+
+@alerts_bp.route('/<alert_id>/report', methods=['GET'])
+def get_incident_report(alert_id):
+    """Return the auto-drafted incident markdown. 404 if not yet generated."""
+    base = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'logs', 'incidents',
+    )
+    path = os.path.join(base, f'{alert_id}.md')
+    if not os.path.exists(path):
+        return jsonify({'error': 'Report not available yet'}), 404
+    with open(path, 'r', encoding='utf-8') as f:
+        return jsonify({'alert_id': alert_id, 'markdown': f.read()})
+
+
+@alerts_bp.route('/<alert_id>/report/regenerate', methods=['POST'])
+def regenerate_incident_report(alert_id):
+    from backend.services.incident_reporter import draft_report
+
+    result = draft_report(alert_id)
+    if not result:
+        return jsonify({'error': 'Unable to draft report'}), 503
+    return jsonify({'alert_id': alert_id, **result})
 
 
 @alerts_bp.route('/statistics', methods=['GET'])
