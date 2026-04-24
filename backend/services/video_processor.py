@@ -7,6 +7,12 @@ from backend.extensions import db, socketio
 from backend.models.metric import Metric
 from backend.models.recording import Recording
 from backend.services import pose_engine
+from backend.services import dense_counter
+from backend.services.heatmap_service import (
+    SampleRateGate,
+    persist_sample,
+    DEFAULT_SAMPLE_INTERVAL_S,
+)
 from backend.utils.helpers import generate_id
 from backend.utils.logger import get_logger
 from config import Config
@@ -19,7 +25,8 @@ class VideoProcessor:
 
     def __init__(self, camera_id, source_path, ai_engine, crowd_analyzer,
                  risk_calculator, alert_manager, app,
-                 area_sqm=100.0, expected_capacity=500):
+                 area_sqm=100.0, expected_capacity=500,
+                 dense_mode='auto'):
         self.camera_id = camera_id
         self.source_path = source_path
         self.ai_engine = ai_engine
@@ -29,6 +36,7 @@ class VideoProcessor:
         self.app = app
         self.area_sqm = area_sqm
         self.expected_capacity = expected_capacity
+        self.dense_mode = dense_mode
         self.show_heatmap = False
 
         self._running = False
@@ -45,8 +53,14 @@ class VideoProcessor:
         self._recording_start = None
         self._recorded_frames = 0
         self._last_recording_id = None
+        self._heatmap_gate = SampleRateGate(
+            interval_s=getattr(Config, 'HEATMAP_SAMPLE_INTERVAL_S',
+                               DEFAULT_SAMPLE_INTERVAL_S)
+        )
         self._pose_interval = 5  # analyze pose every Nth processed frame
         self._last_pose_feats = None
+        self._dense_interval = max(1, getattr(Config, 'DENSE_COUNT_INTERVAL', 15))
+        self._last_dense_count = None  # latest DenseCount result
 
     @property
     def is_running(self):
@@ -124,6 +138,38 @@ class VideoProcessor:
 
                 detections = analysis.get('detections', [])
 
+                # CSRNet dense counting — overrides YOLO count when the scene
+                # exceeds the bbox detector's reliable range. Tracking and
+                # clustering still run off YOLO; only count/density change.
+                if (Config.DENSE_COUNT_ENABLED
+                        and self._frame_count % self._dense_interval == 0
+                        and dense_counter.should_use_dense(
+                            analysis.get('count', 0), self.dense_mode)):
+                    try:
+                        dc = dense_counter.analyze_frame(frame)
+                        if dc is not None and dc.backend == 'csrnet':
+                            self._last_dense_count = dc
+                            try:
+                                from backend.observability import record_dense_invocation
+                                record_dense_invocation()
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logger.debug(f"Dense count skipped: {e}")
+
+                if self._last_dense_count is not None:
+                    dense_n = self._last_dense_count.count
+                    if dense_n > analysis.get('count', 0):
+                        analysis['count'] = dense_n
+                        analysis['density'] = (
+                            dense_n / self.area_sqm if self.area_sqm > 0 else 0
+                        )
+                        analysis['method'] = 'csrnet_density'
+                        if self.expected_capacity > 0:
+                            analysis['capacity_utilization'] = (
+                                dense_n / self.expected_capacity * 100
+                            )
+
                 # ML crowd analysis (clustering, anomalies, flow, pressure)
                 ml_analysis = self.crowd_analyzer.analyze(
                     detections,
@@ -167,11 +213,14 @@ class VideoProcessor:
                 # Any fallen or heavily compressed person is CRITICAL regardless of density.
                 pose_block = ml_analysis.get('pose') or {}
                 crush_risk = pose_block.get('crush_risk', 0.0) or 0.0
+                crush_amp = getattr(Config, 'RISK_CRUSH_AMPLIFIER', 0.4)
+                crush_critical = getattr(Config, 'RISK_CRUSH_CRITICAL_THRESHOLD', 0.6)
+                crush_warning = getattr(Config, 'RISK_CRUSH_WARNING_THRESHOLD', 0.3)
                 if crush_risk > 0:
-                    risk_score = max(risk_score, min(1.0, risk_score + 0.4 * crush_risk))
-                if pose_block.get('n_fallen', 0) > 0 or crush_risk >= 0.6:
+                    risk_score = max(risk_score, min(1.0, risk_score + crush_amp * crush_risk))
+                if pose_block.get('n_fallen', 0) > 0 or crush_risk >= crush_critical:
                     risk_level = 'CRITICAL'
-                elif crush_risk >= 0.3 and risk_level == 'SAFE':
+                elif crush_risk >= crush_warning and risk_level == 'SAFE':
                     risk_level = 'WARNING'
 
                 # Feed trend prediction
@@ -226,15 +275,31 @@ class VideoProcessor:
                     'density_trend': ml_analysis.get('trend_prediction', {}).get('density_trend', 'stable'),
                     'risk_trend': ml_analysis.get('trend_prediction', {}).get('risk_trend', 'stable'),
                     'pose': ml_analysis.get('pose'),
+                    'dense_count': (
+                        self._last_dense_count.count
+                        if self._last_dense_count is not None else None
+                    ),
+                    'count_method': analysis.get('method', 'direct_detection'),
                     'frame_number': self._frame_count,
                     'timestamp': datetime.now(timezone.utc).isoformat(),
                 }
                 self._latest_metrics = metrics
 
+                try:
+                    from backend.observability import set_risk_score
+                    set_risk_score(self.camera_id, risk_score)
+                except Exception:
+                    pass
+
                 socketio.emit('metrics_update', metrics, room=f'camera_{self.camera_id}')
 
                 if self._frame_count % self._metric_interval == 0:
                     self._save_metric(metrics)
+
+                if self._heatmap_gate.should_sample():
+                    self._save_heatmap_sample(
+                        analysis.get('density_map'), analysis['count']
+                    )
 
                 self.alert_manager.check_and_alert(self.camera_id, metrics, self.app, frame_jpeg=self._latest_frame)
 
@@ -320,6 +385,16 @@ class VideoProcessor:
             logger.info(f"Recording saved: {rec_id} ({self._recorded_frames} frames)")
         except Exception as e:
             logger.error(f"Error finalizing recording: {e}")
+
+    def _save_heatmap_sample(self, density_map, count):
+        """Throttled heatmap persistence — runs at most every N seconds."""
+        if density_map is None:
+            return
+        try:
+            with self.app.app_context():
+                persist_sample(self.camera_id, density_map, int(count or 0))
+        except Exception as e:
+            logger.debug(f"Heatmap persist skipped: {e}")
 
     def _save_metric(self, metrics):
         try:

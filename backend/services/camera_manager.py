@@ -38,7 +38,8 @@ class CameraManager:
         self._alert_manager = AlertManager(_c)
         logger.info("CameraManager initialized")
 
-    def start_camera(self, camera_id, source_path, area_sqm=100.0, expected_capacity=500):
+    def start_camera(self, camera_id, source_path, area_sqm=100.0,
+                     expected_capacity=500, dense_mode='auto'):
         if camera_id in self._processors and self._processors[camera_id].is_running:
             return False
 
@@ -52,10 +53,12 @@ class CameraManager:
             app=self._app,
             area_sqm=area_sqm,
             expected_capacity=expected_capacity,
+            dense_mode=dense_mode,
         )
         self._processors[camera_id] = processor
         processor.start()
         logger.info(f"Started processing camera {camera_id}")
+        self._update_active_gauge()
         return True
 
     def stop_camera(self, camera_id):
@@ -63,8 +66,17 @@ class CameraManager:
         if proc and proc.is_running:
             proc.stop()
             logger.info(f"Stopped processing camera {camera_id}")
+            self._update_active_gauge()
             return True
         return False
+
+    def _update_active_gauge(self) -> None:
+        try:
+            from backend.observability import set_cameras_active
+            active = sum(1 for p in self._processors.values() if p.is_running)
+            set_cameras_active(active)
+        except Exception:
+            pass
 
     def get_processor(self, camera_id):
         return self._processors.get(camera_id)

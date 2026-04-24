@@ -22,7 +22,7 @@ async function apiFetch(url, opts = {}) {
             opts.headers['Authorization'] = 'Bearer ' + CS.token;
             return fetch(url, opts);
         }
-        window.location.href = '/login';
+        // Demo mode: auth disabled server-side, don't redirect.
     }
     return res;
 }
@@ -49,7 +49,7 @@ function doLogout() {
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
     fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() })
-        .finally(() => { window.location.href = '/login'; });
+        .finally(() => { window.location.href = '/'; });
 }
 
 /* ---- IST Formatter ---- */

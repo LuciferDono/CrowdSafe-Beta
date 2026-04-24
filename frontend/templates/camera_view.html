@@ -2,61 +2,139 @@
 {% block title %}Video Analysis{% endblock %}
 {% block page_title %}<span id="cameraName">Video Analysis</span>{% endblock %}
 {% block content %}
+
+<!-- Toolbar -->
 <div class="d-flex align-items-center gap-2 mb-3">
     <a href="/cameras" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
     <span class="badge bg-secondary" id="cameraStatus">offline</span>
     <div class="ms-auto d-flex gap-2">
-        <button class="btn btn-sm btn-outline-secondary" id="btnHeatmap" onclick="toggleHeatmap()">Heatmap</button>
-        <button class="btn btn-sm btn-outline-danger" onclick="stopCamera()">Stop</button>
-        <a class="btn btn-sm btn-outline-info d-none" id="btnDownload" onclick="downloadRecording()"><i class="bi bi-download me-1"></i>Download</a>
+        <button class="btn btn-sm btn-outline-secondary" id="btnHeatmap" onclick="toggleHeatmap()">
+            <i class="bi bi-grid-3x3-gap me-1"></i>Heatmap
+        </button>
+        <button class="btn btn-sm btn-outline-danger" onclick="stopCamera()">
+            <i class="bi bi-stop-circle me-1"></i>Stop
+        </button>
+        <a class="btn btn-sm btn-outline-info d-none" id="btnDownload" onclick="downloadRecording()">
+            <i class="bi bi-download me-1"></i>Download
+        </a>
     </div>
 </div>
 
-<div class="row g-3">
-    <div class="col-lg-9">
-        <div class="video-container">
-            <img id="videoFeed" class="video-feed" alt="Video Feed">
-            <div class="video-overlay" id="videoOverlay">
-                <div class="text-center">
-                    <i class="bi bi-camera-video" style="font-size:2rem"></i>
-                    <p class="mt-2 mb-0">Stream not active</p>
+<!-- Row 1: Video + Live Stats -->
+<div class="row g-3 mb-3">
+
+    <!-- Video feed -->
+    <div class="col-lg-8">
+        <div class="panel p-0" style="overflow:hidden;height:100%">
+            <div class="video-container" style="height:100%;min-height:320px">
+                <img id="videoFeed" class="video-feed" alt="Video Feed">
+                <div class="video-overlay" id="videoOverlay">
+                    <div class="text-center">
+                        <i class="bi bi-camera-video" style="font-size:2.4rem;opacity:0.4"></i>
+                        <p class="mt-2 mb-0" style="color:var(--text-dim)">Stream not active</p>
+                        <p class="small mt-1" style="color:var(--text-mute)">Start processing from the Cameras page</p>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-lg-3">
-        <div class="panel mb-3">
-            <div class="panel-header"><h6>Detection</h6></div>
-            <table class="table table-sm mb-0">
+
+    <!-- Live stats sidebar -->
+    <div class="col-lg-4 d-flex flex-column gap-3">
+
+        <!-- Risk level hero -->
+        <div class="panel text-center" style="padding:18px 16px">
+            <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-mute);margin-bottom:6px">Current Risk Level</div>
+            <div id="metricRiskLevel" class="fw-bold risk-safe" style="font-size:2.4rem;line-height:1;letter-spacing:-0.02em">SAFE</div>
+            <div id="metricRiskScoreLabel" style="font-size:0.78rem;color:var(--text-mute);margin-top:6px">Score: 0%</div>
+        </div>
+
+        <!-- 3-stat bar: People | Density | Capacity -->
+        <div class="panel" style="padding:0">
+            <div class="row g-0 text-center">
+                <div class="col-4" style="padding:16px 8px;border-right:1px solid var(--border)">
+                    <div id="metricPeople" class="fw-bold" style="font-size:1.8rem;line-height:1;color:var(--text-bright)">0</div>
+                    <div style="font-size:0.68rem;color:var(--text-mute);margin-top:4px;text-transform:uppercase;letter-spacing:0.06em">People</div>
+                </div>
+                <div class="col-4" style="padding:16px 8px;border-right:1px solid var(--border)">
+                    <div id="metricDensity" class="fw-bold" style="font-size:1.8rem;line-height:1;color:var(--text-bright)">0.00</div>
+                    <div style="font-size:0.68rem;color:var(--text-mute);margin-top:4px;text-transform:uppercase;letter-spacing:0.06em">p/m²</div>
+                </div>
+                <div class="col-4" style="padding:16px 8px">
+                    <div id="metricCapacity" class="fw-bold" style="font-size:1.8rem;line-height:1;color:var(--text-bright)">0%</div>
+                    <div style="font-size:0.68rem;color:var(--text-mute);margin-top:4px;text-transform:uppercase;letter-spacing:0.06em">Capacity</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Motion stats -->
+        <div class="panel" style="flex:0 0 auto">
+            <div class="panel-header" style="margin-bottom:10px"><h6>Motion &amp; Flow</h6></div>
+            <table class="table table-sm mb-0" style="font-size:0.82rem">
                 <tbody>
-                    <tr><td class="text-secondary">People</td><td class="text-end fw-bold" id="metricPeople">0</td></tr>
-                    <tr><td class="text-secondary">Density</td><td class="text-end fw-bold" id="metricDensity">0.00</td></tr>
-                    <tr><td class="text-secondary">Avg Velocity</td><td class="text-end fw-bold" id="metricVelocity">0.00</td></tr>
-                    <tr><td class="text-secondary">Surge Rate</td><td class="text-end fw-bold" id="metricSurge">0.00</td></tr>
-                    <tr><td class="text-secondary">Capacity</td><td class="text-end fw-bold" id="metricCapacity">0%</td></tr>
-                    <tr><td class="text-secondary">Risk Score</td><td class="text-end fw-bold" id="metricRiskScore">0%</td></tr>
-                    <tr><td class="text-secondary">Risk Level</td><td class="text-end fw-bold" id="metricRiskLevel">SAFE</td></tr>
+                    <tr><td class="text-secondary py-1">Avg Velocity</td><td class="text-end fw-bold py-1" id="metricVelocity">0.00 m/s</td></tr>
+                    <tr><td class="text-secondary py-1">Surge Rate</td><td class="text-end fw-bold py-1" id="metricSurge">0.00</td></tr>
+                    <tr><td class="text-secondary py-1">Density Trend</td><td class="text-end fw-bold py-1" id="metricDensityTrend">stable</td></tr>
+                    <tr><td class="text-secondary py-1">Risk Trend</td><td class="text-end fw-bold py-1" id="metricRiskTrend">stable</td></tr>
                 </tbody>
             </table>
         </div>
-        <div class="panel mb-3">
-            <div class="panel-header"><h6>ML Analysis</h6></div>
-            <table class="table table-sm mb-0">
-                <tbody>
-                    <tr><td class="text-secondary">Clusters</td><td class="text-end fw-bold" id="metricClusters">0</td></tr>
-                    <tr><td class="text-secondary">Flow Coherence</td><td class="text-end fw-bold" id="metricCoherence">0.00</td></tr>
-                    <tr><td class="text-secondary">Crowd Pressure</td><td class="text-end fw-bold" id="metricPressure">0.00</td></tr>
-                    <tr><td class="text-secondary">Anomalies</td><td class="text-end fw-bold" id="metricAnomalies">0</td></tr>
-                    <tr><td class="text-secondary">Density Trend</td><td class="text-end fw-bold" id="metricDensityTrend">stable</td></tr>
-                    <tr><td class="text-secondary">Risk Trend</td><td class="text-end fw-bold" id="metricRiskTrend">stable</td></tr>
-                </tbody>
-            </table>
+
+        <!-- Live density trend chart -->
+        <div class="panel" style="flex:1 1 auto">
+            <div class="panel-header" style="margin-bottom:10px"><h6>Live Density Trend</h6></div>
+            <div style="height:110px"><canvas id="densityChart"></canvas></div>
         </div>
+
+    </div>
+</div>
+
+<!-- Row 2: Popular Times + ML Analysis -->
+<div class="row g-3">
+
+    <!-- Popular Times -->
+    <div class="col-lg-8">
         <div class="panel">
-            <div class="panel-header"><h6>Density Trend</h6></div>
-            <canvas id="densityChart" height="160"></canvas>
+            <div class="panel-header">
+                <div>
+                    <div class="panel-title">
+                        Popular Times
+                        <span class="forecast-badge ms-2"><i class="bi bi-clock-history"></i> Historical</span>
+                    </div>
+                    <div style="font-size:0.78rem;color:var(--text-mute);margin-top:3px">
+                        Typical crowd intensity by hour · based on all recorded sessions
+                    </div>
+                </div>
+                <span id="popularPeakLabel" style="font-size:0.82rem;color:var(--text-dim)"></span>
+            </div>
+            <div style="height:150px;padding:0 4px">
+                <canvas id="popularTimesChart"></canvas>
+            </div>
+            <div class="d-flex align-items-center gap-3 mt-2 px-1" style="font-size:0.72rem;color:var(--text-mute)">
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--ok);margin-right:4px;vertical-align:middle"></span>Low</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--caution);margin-right:4px;vertical-align:middle"></span>Moderate</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--danger);margin-right:4px;vertical-align:middle"></span>Busy</span>
+                <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fadc50;margin-right:4px;vertical-align:middle"></span>Now</span>
+                <span class="ms-auto" id="popularTimesMeta"></span>
+            </div>
         </div>
     </div>
+
+    <!-- ML Analysis -->
+    <div class="col-lg-4">
+        <div class="panel h-100">
+            <div class="panel-header" style="margin-bottom:10px"><h6>ML Analysis</h6></div>
+            <table class="table table-sm mb-0" style="font-size:0.83rem">
+                <tbody>
+                    <tr><td class="text-secondary py-1">Clusters</td><td class="text-end fw-bold py-1" id="metricClusters">0</td></tr>
+                    <tr><td class="text-secondary py-1">Flow Coherence</td><td class="text-end fw-bold py-1" id="metricCoherence">0.00</td></tr>
+                    <tr><td class="text-secondary py-1">Crowd Pressure</td><td class="text-end fw-bold py-1" id="metricPressure">0.00</td></tr>
+                    <tr><td class="text-secondary py-1">Anomalies</td><td class="text-end fw-bold py-1" id="metricAnomalies">0</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 {% endblock %}
 {% block scripts %}

@@ -32,12 +32,28 @@ class Config:
     SECRET_KEY = _require_or_generate('SECRET_KEY')
     DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
+    # Demo/dev: disable auth entirely (default True — this is a project, not prod)
+    AUTH_DISABLED = os.environ.get('AUTH_DISABLED', 'True').lower() == 'true'
+
     # Database
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
+    _raw_db_url = os.environ.get(
         'DATABASE_URL',
         f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'crowdsafe.db')}"
     )
+    # Normalize legacy scheme (heroku/render ship "postgres://", SQLA 2.x needs "postgresql://")
+    if _raw_db_url.startswith('postgres://'):
+        _raw_db_url = 'postgresql://' + _raw_db_url[len('postgres://'):]
+    SQLALCHEMY_DATABASE_URI = _raw_db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Pool tuning only when talking to a real server (Postgres).
+    if SQLALCHEMY_DATABASE_URI.startswith('postgresql'):
+        SQLALCHEMY_ENGINE_OPTIONS = {
+            'pool_size': int(os.environ.get('DB_POOL_SIZE', '10')),
+            'max_overflow': int(os.environ.get('DB_MAX_OVERFLOW', '20')),
+            'pool_pre_ping': True,
+            'pool_recycle': 1800,
+        }
 
     # Paths
     UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
@@ -84,8 +100,24 @@ class Config:
     RISK_WEIGHT_SURGE = 0.3
     RISK_WEIGHT_VELOCITY = 0.3
 
+    # Risk amplifiers (env-tunable per deployment — stadium vs temple vs transit)
+    # Crush escalation: pose-fusion crush_risk bumps base risk up; at cutoffs
+    # it overrides the classification directly.
+    RISK_CRUSH_AMPLIFIER = float(os.environ.get('RISK_CRUSH_AMPLIFIER', '0.4'))
+    RISK_CRUSH_CRITICAL_THRESHOLD = float(os.environ.get('RISK_CRUSH_CRITICAL_THRESHOLD', '0.6'))
+    RISK_CRUSH_WARNING_THRESHOLD = float(os.environ.get('RISK_CRUSH_WARNING_THRESHOLD', '0.3'))
+    # Large-crowd multiplier: bumps risk score once count crosses the floor.
+    RISK_LARGE_CROWD_COUNT = int(os.environ.get('RISK_LARGE_CROWD_COUNT', '100'))
+    RISK_LARGE_CROWD_BUMP = float(os.environ.get('RISK_LARGE_CROWD_BUMP', '1.15'))
+
     # Alerts
     ALERT_COOLDOWN = 60
+    # Hysteresis — N consecutive frames above threshold to escalate,
+    # M below to de-escalate. CRITICAL escalates instantly because a
+    # genuine stampede signal (fallen/compressed bodies) is not flicker.
+    ALERT_HYSTERESIS_WARNING_ENTER = int(os.environ.get('ALERT_HYSTERESIS_WARNING_ENTER', '3'))
+    ALERT_HYSTERESIS_CRITICAL_ENTER = int(os.environ.get('ALERT_HYSTERESIS_CRITICAL_ENTER', '1'))
+    ALERT_HYSTERESIS_EXIT = int(os.environ.get('ALERT_HYSTERESIS_EXIT', '5'))
 
     # Telegram
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
@@ -115,14 +147,57 @@ class Config:
 
     # Forecasting
     FORECAST_ENABLED = os.environ.get('FORECAST_ENABLED', 'True').lower() == 'true'
-    FORECAST_HORIZON_SECONDS = int(os.environ.get('FORECAST_HORIZON_SECONDS', '60'))
+    # Default 300s (5 min) — evacuation-actionable horizon.
+    FORECAST_HORIZON_SECONDS = int(os.environ.get('FORECAST_HORIZON_SECONDS', '300'))
+    FORECAST_HORIZON_MAX = int(os.environ.get('FORECAST_HORIZON_MAX', '900'))
+    FORECAST_HORIZON_MIN = int(os.environ.get('FORECAST_HORIZON_MIN', '30'))
+    FORECAST_LOOKBACK_MAX = int(os.environ.get('FORECAST_LOOKBACK_MAX', '1800'))
+    FORECAST_STEP_MAX = int(os.environ.get('FORECAST_STEP_MAX', '60'))
+
+    # Historical pattern-of-life baseline (compare live metrics against
+    # same-weekday-same-hour averages over past N weeks).
+    BASELINE_ENABLED = os.environ.get('BASELINE_ENABLED', 'True').lower() == 'true'
+    BASELINE_LOOKBACK_WEEKS = int(os.environ.get('BASELINE_LOOKBACK_WEEKS', '4'))
+    BASELINE_HOUR_WINDOW = int(os.environ.get('BASELINE_HOUR_WINDOW', '1'))
+
+    # Multi-camera wave correlation (stampede propagation detection)
+    CORRELATION_ENABLED = os.environ.get('CORRELATION_ENABLED', 'True').lower() == 'true'
+    CORRELATION_WINDOW_SECONDS = int(os.environ.get('CORRELATION_WINDOW_SECONDS', '300'))
+    CORRELATION_MAX_LAG_SECONDS = int(os.environ.get('CORRELATION_MAX_LAG_SECONDS', '30'))
+    CORRELATION_MIN_PEARSON = float(os.environ.get('CORRELATION_MIN_PEARSON', '0.5'))
+
+    # Heatmap sample persistence (per-zone spatial density)
+    HEATMAP_ENABLED = os.environ.get('HEATMAP_ENABLED', 'True').lower() == 'true'
+    HEATMAP_SAMPLE_INTERVAL_S = float(os.environ.get('HEATMAP_SAMPLE_INTERVAL_S', '10'))
+    HEATMAP_GRID_ROWS = int(os.environ.get('HEATMAP_GRID_ROWS', '16'))
+    HEATMAP_GRID_COLS = int(os.environ.get('HEATMAP_GRID_COLS', '16'))
+    HEATMAP_RETENTION_HOURS = int(os.environ.get('HEATMAP_RETENTION_HOURS', '72'))
 
     # Pose fusion
     POSE_ENABLED = os.environ.get('POSE_ENABLED', 'True').lower() == 'true'
     POSE_MODEL = os.environ.get('POSE_MODEL', 'yolo11s-pose.pt')
 
+    # CSRNet dense crowd counting (kicks in when YOLO saturates)
+    DENSE_COUNT_ENABLED = os.environ.get('DENSE_COUNT_ENABLED', 'False').lower() == 'true'
+    DENSE_COUNT_MODEL_REPO = os.environ.get('DENSE_COUNT_MODEL_REPO', '')
+    DENSE_COUNT_MODEL_FILE = os.environ.get('DENSE_COUNT_MODEL_FILE', '')
+    DENSE_COUNT_THRESHOLD = int(os.environ.get('DENSE_COUNT_THRESHOLD', '40'))
+    DENSE_COUNT_INTERVAL = int(os.environ.get('DENSE_COUNT_INTERVAL', '15'))  # every N frames
+    # Strict mode: refuse to run CSRNet on random-init weights.
+    # Defaults True in production so meaningless counts can never ship.
+    DENSE_COUNT_STRICT = os.environ.get(
+        'DENSE_COUNT_STRICT',
+        'True' if os.environ.get('FLASK_ENV', 'development').lower() == 'production' else 'False'
+    ).lower() == 'true'
+
     # Rate limiting
     RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
+
+    # Observability
+    SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
+    SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.1'))
+    SENTRY_ENVIRONMENT = os.environ.get('SENTRY_ENVIRONMENT', os.environ.get('FLASK_ENV', 'development'))
+    METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'True').lower() == 'true'
 
     # Scene defaults
     PIXELS_PER_METER = 100.0

@@ -34,7 +34,15 @@ class LLMResponse:
     def json(self) -> Any:
         import json
 
-        payload = self.text.strip()
+        payload = (self.text or '').strip()
+        if not payload:
+            finish = ''
+            try:
+                finish = self.raw['choices'][0].get('finish_reason', '') or ''
+            except Exception:
+                pass
+            hint = ' (model returned empty content; check finish_reason={!r} — reasoning models may consume max_tokens budget)'.format(finish)
+            raise LLMError('empty model response' + hint)
         if payload.startswith('```'):
             payload = payload.strip('`').lstrip('json').strip()
         return json.loads(payload)

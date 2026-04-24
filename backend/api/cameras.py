@@ -5,7 +5,10 @@ from werkzeug.utils import secure_filename
 from backend.extensions import db
 from backend.models.camera import Camera
 from backend.models.recording import Recording
+from backend.services.audit_service import audited
 from backend.services.camera_manager import camera_manager
+from backend.services.heatmap_service import latest_sample, recent_samples
+from backend.utils.decorators import role_required, token_required
 from backend.utils.helpers import generate_id
 from backend.utils.validators import allowed_video_file, sanitize_string
 
@@ -13,6 +16,7 @@ cameras_bp = Blueprint('cameras', __name__)
 
 
 @cameras_bp.route('', methods=['GET'])
+@token_required
 def list_cameras():
     cameras = Camera.query.order_by(Camera.created_at.desc()).all()
     result = []
@@ -26,6 +30,8 @@ def list_cameras():
 
 
 @cameras_bp.route('', methods=['POST'])
+@role_required('admin')
+@audited('camera.create', target_type='camera')
 def create_camera():
     data = request.get_json() or {}
     cam_id = generate_id('CAM')
@@ -46,6 +52,7 @@ def create_camera():
 
 
 @cameras_bp.route('/<camera_id>', methods=['GET'])
+@token_required
 def get_camera(camera_id):
     cam = db.session.get(Camera, camera_id)
     if not cam:
@@ -58,6 +65,8 @@ def get_camera(camera_id):
 
 
 @cameras_bp.route('/<camera_id>', methods=['PUT'])
+@role_required('admin', 'operator')
+@audited('camera.update', target_type='camera', target_id_from='camera_id')
 def update_camera(camera_id):
     cam = db.session.get(Camera, camera_id)
     if not cam:
@@ -66,6 +75,10 @@ def update_camera(camera_id):
     for field in ['name', 'location', 'source_type', 'source_url', 'resolution']:
         if field in data:
             setattr(cam, field, sanitize_string(str(data[field]), 200))
+    if 'dense_mode' in data:
+        val = str(data['dense_mode']).lower()
+        if val in ('auto', 'always', 'never'):
+            cam.dense_mode = val
     for field in ['area_sqm']:
         if field in data:
             setattr(cam, field, float(data[field]))
@@ -79,6 +92,8 @@ def update_camera(camera_id):
 
 
 @cameras_bp.route('/<camera_id>', methods=['DELETE'])
+@role_required('admin')
+@audited('camera.delete', target_type='camera', target_id_from='camera_id')
 def delete_camera(camera_id):
     cam = db.session.get(Camera, camera_id)
     if not cam:
@@ -90,6 +105,7 @@ def delete_camera(camera_id):
 
 
 @cameras_bp.route('/<camera_id>/upload', methods=['POST'])
+@role_required('admin', 'operator')
 def upload_video(camera_id):
     cam = db.session.get(Camera, camera_id)
     if not cam:
@@ -133,6 +149,7 @@ def upload_video(camera_id):
 
 
 @cameras_bp.route('/<camera_id>/test', methods=['POST'])
+@role_required('admin', 'operator')
 def test_camera(camera_id):
     cam = db.session.get(Camera, camera_id)
     if not cam:
@@ -148,6 +165,8 @@ def test_camera(camera_id):
 
 
 @cameras_bp.route('/<camera_id>/start', methods=['POST'])
+@role_required('admin', 'operator')
+@audited('camera.start', target_type='camera', target_id_from='camera_id')
 def start_processing(camera_id):
     cam = db.session.get(Camera, camera_id)
     if not cam:
@@ -157,7 +176,10 @@ def start_processing(camera_id):
         return jsonify({'error': 'No video source configured. Upload a video first.'}), 400
     if camera_manager._app is None:
         camera_manager.init_app(current_app._get_current_object())
-    started = camera_manager.start_camera(cam.id, source, cam.area_sqm, cam.expected_capacity)
+    started = camera_manager.start_camera(
+        cam.id, source, cam.area_sqm, cam.expected_capacity,
+        dense_mode=cam.dense_mode or 'auto',
+    )
     if started:
         cam.status = 'processing'
         db.session.commit()
@@ -166,6 +188,8 @@ def start_processing(camera_id):
 
 
 @cameras_bp.route('/<camera_id>/stop', methods=['POST'])
+@role_required('admin', 'operator')
+@audited('camera.stop', target_type='camera', target_id_from='camera_id')
 def stop_processing(camera_id):
     cam = db.session.get(Camera, camera_id)
     if not cam:
@@ -180,9 +204,120 @@ def stop_processing(camera_id):
 
 
 @cameras_bp.route('/<camera_id>/stream')
+@token_required
 def stream(camera_id):
     proc = camera_manager.get_processor(camera_id)
     if not proc or not proc.is_running:
         return jsonify({'error': 'Camera not processing'}), 404
     proc.show_heatmap = request.args.get('heatmap') == '1'
     return Response(proc.generate_mjpeg(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@cameras_bp.route('/<camera_id>/heatmap', methods=['GET'])
+@token_required
+def get_heatmap(camera_id):
+    """Return recent persisted heatmap samples.
+
+    Query params:
+      - ``limit`` (default 20, max 200) — number of samples, newest first.
+      - ``include_grid`` (default 1) — set ``0`` to omit the grid payload
+        (useful for listings that just want timestamps + counts).
+    """
+    cam = db.session.get(Camera, camera_id)
+    if not cam:
+        return jsonify({'error': 'Camera not found'}), 404
+
+    try:
+        limit = max(1, min(int(request.args.get('limit', 20)), 200))
+    except (TypeError, ValueError):
+        limit = 20
+    include_grid = request.args.get('include_grid', '1') != '0'
+
+    return jsonify({
+        'camera_id': camera_id,
+        'samples': recent_samples(camera_id, limit=limit, include_grid=include_grid),
+    })
+
+
+@cameras_bp.route('/<camera_id>/heatmap/current', methods=['GET'])
+@token_required
+def get_heatmap_current(camera_id):
+    """Return the most recent heatmap sample for the camera."""
+    cam = db.session.get(Camera, camera_id)
+    if not cam:
+        return jsonify({'error': 'Camera not found'}), 404
+    sample = latest_sample(camera_id)
+    if sample is None:
+        return jsonify({'error': 'No heatmap samples yet'}), 404
+    return jsonify(sample)
+
+
+@cameras_bp.route('/<camera_id>/popular-times', methods=['GET'])
+@token_required
+def popular_times(camera_id):
+    """Aggregate historical metrics by hour-of-day for a Google-Maps-style popular times chart."""
+    cam = db.session.get(Camera, camera_id)
+    if not cam:
+        return jsonify({'error': 'Camera not found'}), 404
+
+    from sqlalchemy import text
+    rows = db.session.execute(text("""
+        SELECT
+            CAST(strftime('%H', timestamp) AS INTEGER) AS hour,
+            AVG("count")        AS avg_count,
+            AVG(density)        AS avg_density,
+            AVG(risk_score)     AS avg_risk_score,
+            COUNT(*)            AS sample_count
+        FROM metrics
+        WHERE camera_id = :cid
+        GROUP BY hour
+        ORDER BY hour
+    """), {'cid': camera_id}).fetchall()
+
+    if not rows:
+        return jsonify({'camera_id': camera_id, 'hours': [], 'peak_hour': None, 'total_samples': 0})
+
+    hour_map = {
+        int(r[0]): {
+            'avg_count':      float(r[1] or 0),
+            'avg_density':    float(r[2] or 0),
+            'avg_risk_score': float(r[3] or 0),
+            'sample_count':   int(r[4] or 0),
+        }
+        for r in rows
+    }
+
+    max_count = max((v['avg_count'] for v in hour_map.values()), default=1) or 1
+
+    def _label(h):
+        suffix = 'AM' if h < 12 else 'PM'
+        return f"{h % 12 or 12}{suffix}"
+
+    hours_out = []
+    for h in range(24):
+        d = hour_map.get(h, {})
+        avg_count = d.get('avg_count', 0)
+        hours_out.append({
+            'hour':               h,
+            'label':              _label(h),
+            'avg_count':          round(avg_count, 1),
+            'avg_density':        round(d.get('avg_density', 0), 3),
+            'avg_risk_score':     round(d.get('avg_risk_score', 0), 3),
+            'relative_intensity': round(avg_count / max_count, 3),
+            'sample_count':       d.get('sample_count', 0),
+            'has_data':           h in hour_map,
+        })
+
+    # Peak within visible display window (6 AM–11 PM); fall back to global peak
+    display_map = {h: v for h, v in hour_map.items() if 6 <= h <= 23}
+    peak_hour = (max(display_map, key=lambda h: display_map[h]['avg_count'])
+                 if display_map
+                 else (max(hour_map, key=lambda h: hour_map[h]['avg_count']) if hour_map else None))
+    total_samples = sum(v['sample_count'] for v in hour_map.values())
+
+    return jsonify({
+        'camera_id':     camera_id,
+        'hours':         hours_out,
+        'peak_hour':     peak_hour,
+        'total_samples': total_samples,
+    })

@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from backend.extensions import db
 from backend.models.user import User
+from backend.services.audit_service import audited
 from backend.utils.validators import validate_email, validate_username, validate_password
 from backend.utils.decorators import role_required
 import secrets
@@ -9,12 +10,15 @@ users_bp = Blueprint('users', __name__)
 
 
 @users_bp.route('', methods=['GET'])
+@role_required('admin')
 def list_users():
     users = User.query.order_by(User.created_at.desc()).all()
     return jsonify([u.to_dict() for u in users])
 
 
 @users_bp.route('', methods=['POST'])
+@role_required('admin')
+@audited('user.create', target_type='user')
 def create_user():
     data = request.get_json() or {}
     username = data.get('username', '').strip()
@@ -50,6 +54,8 @@ def create_user():
 
 
 @users_bp.route('/<int:user_id>', methods=['PUT'])
+@role_required('admin')
+@audited('user.update', target_type='user', target_id_from='user_id')
 def update_user(user_id):
     user = db.session.get(User, user_id)
     if not user:
@@ -70,6 +76,8 @@ def update_user(user_id):
 
 
 @users_bp.route('/<int:user_id>', methods=['DELETE'])
+@role_required('admin')
+@audited('user.delete', target_type='user', target_id_from='user_id')
 def delete_user(user_id):
     user = db.session.get(User, user_id)
     if not user:
@@ -80,6 +88,8 @@ def delete_user(user_id):
 
 
 @users_bp.route('/<int:user_id>/reset-password', methods=['POST'])
+@role_required('admin')
+@audited('user.reset_password', target_type='user', target_id_from='user_id')
 def reset_password(user_id):
     user = db.session.get(User, user_id)
     if not user:

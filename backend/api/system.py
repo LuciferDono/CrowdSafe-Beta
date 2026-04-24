@@ -7,6 +7,8 @@ from backend.models.alert import Alert
 from backend.models.metric import Metric
 from backend.models.system_log import SystemLog
 from backend.services.camera_manager import camera_manager
+from backend.services import hf_service, llm_service
+from config import Config
 
 system_bp = Blueprint('system', __name__)
 
@@ -45,6 +47,34 @@ def stats():
         'alerts_unacknowledged': unack_alerts,
         'metrics_recorded': metric_count,
         'total_people_detected': total_people,
+    })
+
+
+@system_bp.route('/ai-status', methods=['GET'])
+def ai_status():
+    """Report which AI/LLM backends are configured."""
+    return jsonify({
+        'hf': {
+            'configured': hf_service.is_configured(),
+            'models_dir': Config.MODEL_FOLDER,
+        },
+        'llm': {
+            'configured': llm_service.is_configured(),
+            'model_default': Config.OR_MODEL_DEFAULT,
+            'model_premium': Config.OR_MODEL_PREMIUM,
+            'model_vision': Config.OR_MODEL_VISION,
+            'model_nano': Config.OR_MODEL_NANO,
+        },
+        'features': {
+            'copilot': llm_service.is_configured(),
+            'nl_search': llm_service.is_configured(),
+            'alert_narrator': llm_service.is_configured(),
+            'triage': llm_service.is_configured(),
+            'dense_counter': hf_service.is_configured(),
+            'forecast_baseline': True,
+            'heatmap': True,
+            'correlation': True,
+        },
     })
 
 

@@ -8,6 +8,7 @@ class Camera(db.Model):
 
     id = db.Column(db.String(50), primary_key=True)
     name = db.Column(db.String(100), nullable=False)
+    venue_id = db.Column(db.String(50), db.ForeignKey('venues.id'), nullable=True, index=True)
     location = db.Column(db.String(200), default='')
     source_type = db.Column(db.String(20), default='file')  # rtsp, http, file, usb
     source_url = db.Column(db.Text, default='')
@@ -22,6 +23,7 @@ class Camera(db.Model):
     longitude = db.Column(db.Float, nullable=True)
     fps_target = db.Column(db.Integer, default=30)
     resolution = db.Column(db.String(20), default='1280x720')
+    dense_mode = db.Column(db.String(10), default='auto')  # auto | always | never
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
@@ -35,6 +37,7 @@ class Camera(db.Model):
         return {
             'id': self.id,
             'name': self.name,
+            'venue_id': self.venue_id,
             'location': self.location,
             'source_type': self.source_type,
             'source_url': self.source_url,
@@ -47,6 +50,7 @@ class Camera(db.Model):
             'longitude': self.longitude,
             'fps_target': self.fps_target,
             'resolution': self.resolution,
+            'dense_mode': self.dense_mode,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

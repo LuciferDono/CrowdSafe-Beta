@@ -1,13 +1,16 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, g, request, jsonify
 from datetime import datetime, timezone
 import os
 from backend.extensions import db
 from backend.models.alert import Alert
+from backend.services.audit_service import audited
+from backend.utils.decorators import role_required, token_required
 
 alerts_bp = Blueprint('alerts', __name__)
 
 
 @alerts_bp.route('', methods=['GET'])
+@token_required
 def list_alerts():
     camera_id = request.args.get('camera_id')
     risk_level = request.args.get('risk_level')
@@ -27,6 +30,7 @@ def list_alerts():
 
 
 @alerts_bp.route('/<alert_id>', methods=['GET'])
+@token_required
 def get_alert(alert_id):
     alert = Alert.query.filter_by(alert_id=alert_id).first()
     if not alert:
@@ -37,6 +41,8 @@ def get_alert(alert_id):
 
 
 @alerts_bp.route('/<alert_id>/acknowledge', methods=['POST'])
+@role_required('admin', 'operator')
+@audited('alert.acknowledge', target_type='alert', target_id_from='alert_id')
 def acknowledge_alert(alert_id):
     alert = Alert.query.filter_by(alert_id=alert_id).first()
     if not alert and alert_id.isdigit():
@@ -44,12 +50,15 @@ def acknowledge_alert(alert_id):
     if not alert:
         return jsonify({'error': 'Alert not found'}), 404
     alert.acknowledged = True
+    alert.acknowledged_by = getattr(g.current_user, 'id', None)
     alert.acknowledged_at = datetime.now(timezone.utc)
     db.session.commit()
     return jsonify(alert.to_dict())
 
 
 @alerts_bp.route('/<alert_id>/resolve', methods=['POST'])
+@role_required('admin', 'operator')
+@audited('alert.resolve', target_type='alert', target_id_from='alert_id')
 def resolve_alert(alert_id):
     alert = Alert.query.filter_by(alert_id=alert_id).first()
     if not alert and alert_id.isdigit():
@@ -60,18 +69,21 @@ def resolve_alert(alert_id):
     alert.resolved_at = datetime.now(timezone.utc)
     if not alert.acknowledged:
         alert.acknowledged = True
+        alert.acknowledged_by = getattr(g.current_user, 'id', None)
         alert.acknowledged_at = datetime.now(timezone.utc)
     db.session.commit()
     return jsonify(alert.to_dict())
 
 
 @alerts_bp.route('/unacknowledged/count', methods=['GET'])
+@token_required
 def unacknowledged_count():
     count = Alert.query.filter_by(acknowledged=False).count()
     return jsonify({'count': count})
 
 
 @alerts_bp.route('/<alert_id>/report', methods=['GET'])
+@token_required
 def get_incident_report(alert_id):
     """Return the auto-drafted incident markdown. 404 if not yet generated."""
     base = os.path.join(
@@ -86,6 +98,7 @@ def get_incident_report(alert_id):
 
 
 @alerts_bp.route('/<alert_id>/report/regenerate', methods=['POST'])
+@role_required('admin', 'operator')
 def regenerate_incident_report(alert_id):
     from backend.services.incident_reporter import draft_report
 
@@ -96,6 +109,7 @@ def regenerate_incident_report(alert_id):
 
 
 @alerts_bp.route('/statistics', methods=['GET'])
+@token_required
 def statistics():
     from sqlalchemy import func
     total = Alert.query.count()

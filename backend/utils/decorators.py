@@ -4,17 +4,41 @@ from flask import request, jsonify, current_app, g
 from backend.models.user import User
 
 
+def _demo_user():
+    """Return (and lazily create) the demo admin used when AUTH_DISABLED."""
+    from backend.extensions import db
+
+    user = User.query.filter_by(username='admin').first()
+    if user is None:
+        user = User.query.filter_by(role='admin').first()
+    if user is None:
+        user = User(
+            username='admin',
+            email='admin@crowdsafe.local',
+            role='admin',
+            is_active=True,
+        )
+        if hasattr(user, 'set_password'):
+            user.set_password('admin')
+        db.session.add(user)
+        db.session.commit()
+    return user
+
+
 def token_required(f):
-    """Require valid JWT token for API access."""
+    """Require valid JWT token for API access (bypassed when AUTH_DISABLED)."""
     @wraps(f)
     def decorated(*args, **kwargs):
+        if current_app.config.get('AUTH_DISABLED'):
+            g.current_user = _demo_user()
+            return f(*args, **kwargs)
+
         token = None
         auth_header = request.headers.get('Authorization', '')
         if auth_header.startswith('Bearer '):
             token = auth_header[7:]
 
         if not token:
-            # Check session cookie as fallback for browser-based access
             token = request.cookies.get('access_token')
 
         if not token:
@@ -36,11 +60,13 @@ def token_required(f):
 
 
 def role_required(*roles):
-    """Require specific user role(s)."""
+    """Require specific user role(s) (bypassed when AUTH_DISABLED)."""
     def decorator(f):
         @wraps(f)
         @token_required
         def decorated(*args, **kwargs):
+            if current_app.config.get('AUTH_DISABLED'):
+                return f(*args, **kwargs)
             if g.current_user.role not in roles:
                 return jsonify({'error': 'Insufficient permissions'}), 403
             return f(*args, **kwargs)

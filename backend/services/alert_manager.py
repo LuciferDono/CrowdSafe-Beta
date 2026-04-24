@@ -13,18 +13,74 @@ from backend.utils.logger import get_logger
 
 logger = get_logger('alert_manager')
 
+# Risk levels ranked; anything >= CAUTION rank triggers an alert.
+_LEVEL_RANK = {'SAFE': 0, 'CAUTION': 1, 'WARNING': 2, 'CRITICAL': 3}
+
 
 class AlertManager:
-    """Threshold-based alert creation with cooldown and escalation."""
+    """Threshold-based alert creation with hysteresis, cooldown, escalation."""
 
     def __init__(self, config):
         self.config = config
         self._last_alert_time = {}  # key -> timestamp
+        # Hysteresis state per camera:
+        #   effective_level: last confirmed level (after debounce)
+        #   above_streak / below_streak: consecutive frames biasing up/down
+        self._hyst_state: dict[str, dict] = {}
+
+    def _apply_hysteresis(self, camera_id: str, observed: str) -> str:
+        """Debounce flicker around thresholds. Returns the *effective* level
+        to act on. Upgrade to CRITICAL is near-instant; upgrade to WARNING
+        needs multiple frames; downgrade always requires a streak."""
+        st = self._hyst_state.setdefault(
+            camera_id,
+            {'effective_level': 'SAFE', 'above_streak': 0, 'below_streak': 0},
+        )
+        effective = st['effective_level']
+        obs_rank = _LEVEL_RANK.get(observed, 0)
+        eff_rank = _LEVEL_RANK.get(effective, 0)
+
+        warning_enter = getattr(self.config, 'ALERT_HYSTERESIS_WARNING_ENTER', 3)
+        critical_enter = getattr(self.config, 'ALERT_HYSTERESIS_CRITICAL_ENTER', 1)
+        exit_streak = getattr(self.config, 'ALERT_HYSTERESIS_EXIT', 5)
+
+        if obs_rank > eff_rank:
+            # Escalation candidate
+            st['above_streak'] += 1
+            st['below_streak'] = 0
+            needed = critical_enter if observed == 'CRITICAL' else warning_enter
+            if st['above_streak'] >= needed:
+                st['effective_level'] = observed
+                st['above_streak'] = 0
+        elif obs_rank < eff_rank:
+            # De-escalation candidate
+            st['below_streak'] += 1
+            st['above_streak'] = 0
+            if st['below_streak'] >= exit_streak:
+                st['effective_level'] = observed
+                st['below_streak'] = 0
+        else:
+            st['above_streak'] = 0
+            st['below_streak'] = 0
+
+        return st['effective_level']
+
+    def reset_hysteresis(self, camera_id: str | None = None) -> None:
+        """Test hook / operator hook. Drop debounce state."""
+        if camera_id is None:
+            self._hyst_state.clear()
+        else:
+            self._hyst_state.pop(camera_id, None)
 
     def check_and_alert(self, camera_id, metrics, app, frame_jpeg=None):
         """Check metrics against thresholds, create alerts if needed."""
-        risk_level = metrics.get('risk_level', 'SAFE')
-        if risk_level not in ('WARNING', 'CRITICAL'):
+        observed_level = metrics.get('risk_level', 'SAFE')
+        risk_level = self._apply_hysteresis(camera_id, observed_level)
+        # Surface the debounced level so downstream UI reflects what the
+        # alerting system actually reacted to.
+        metrics['risk_level_effective'] = risk_level
+
+        if risk_level not in ('CAUTION', 'WARNING', 'CRITICAL'):
             return None
 
         # Cooldown
@@ -60,8 +116,12 @@ class AlertManager:
                        f"{count} people, density {density:.2f} p/m\u00b2, "
                        f"velocity {velocity:.2f} m/s, risk {risk_score:.0%} "
                        f"at {time_str}")
-        else:
+        elif risk_level == 'WARNING':
             message = (f"WARNING: Elevated crowd density. "
+                       f"{count} people, density {density:.2f} p/m\u00b2, "
+                       f"risk {risk_score:.0%} at {time_str}")
+        else:
+            message = (f"CAUTION: Crowd density increasing. "
                        f"{count} people, density {density:.2f} p/m\u00b2, "
                        f"risk {risk_score:.0%} at {time_str}")
 
@@ -90,6 +150,12 @@ class AlertManager:
                 )
                 db.session.add(alert)
                 db.session.commit()
+
+                try:
+                    from backend.observability import record_alert
+                    record_alert(risk_level)
+                except Exception:
+                    pass
 
                 alert_data = alert.to_dict()
                 # Add camera info for Telegram

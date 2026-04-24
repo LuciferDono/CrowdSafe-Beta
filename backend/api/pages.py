@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect
+from flask import Blueprint, render_template, current_app, redirect
 
 pages_bp = Blueprint('pages', __name__)
 
@@ -10,6 +10,9 @@ def dashboard():
 
 @pages_bp.route('/login')
 def login():
+    # Demo mode: skip login, go straight to dashboard.
+    if current_app.config.get('AUTH_DISABLED'):
+        return redirect('/')
     return render_template('login.html')
 
 

@@ -1,6 +1,6 @@
 from flask import Flask
 from config import Config
-from backend.extensions import db, socketio, limiter
+from backend.extensions import db, socketio, limiter, migrate
 import os
 import secrets
 import stat
@@ -22,12 +22,24 @@ def create_app(config_class=Config):
 
     # Init extensions
     db.init_app(app)
+    migrate.init_app(
+        app,
+        db,
+        directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'migrations'),
+        render_as_batch=True,
+    )
     socketio.init_app(app, async_mode='threading', cors_allowed_origins='*')
     limiter.init_app(app)
 
     # Setup logging
     from backend.utils.logger import setup_logging
     setup_logging(app)
+
+    # Observability — Sentry first (before blueprints), Prometheus after
+    # (needs the app object to wire its /metrics route).
+    from backend.observability import init_sentry, init_prometheus
+    init_sentry(app)
+    init_prometheus(app)
 
     # Register blueprints
     from backend.api.pages import pages_bp
@@ -42,6 +54,9 @@ def create_app(config_class=Config):
     from backend.api.copilot import copilot_bp
     from backend.api.forecast import forecast_bp
     from backend.api.search import search_bp
+    from backend.api.audit import audit_bp
+    from backend.api.correlation import correlation_bp
+    from backend.api.venues import venues_bp
 
     app.register_blueprint(pages_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -55,17 +70,45 @@ def create_app(config_class=Config):
     app.register_blueprint(copilot_bp, url_prefix='/api/copilot')
     app.register_blueprint(forecast_bp, url_prefix='/api/forecast')
     app.register_blueprint(search_bp, url_prefix='/api/search')
+    app.register_blueprint(audit_bp, url_prefix='/api/audit')
+    app.register_blueprint(correlation_bp, url_prefix='/api/correlation')
+    app.register_blueprint(venues_bp, url_prefix='/api/venues')
 
     # Register websocket events
     from backend.websockets import events  # noqa: F401
 
-    # Create tables and default admin
+    # Schema bootstrap: SQLite (dev) uses create_all, Postgres relies on alembic.
     with app.app_context():
         import backend.models  # noqa: F401
-        db.create_all()
+        _bootstrap_schema(app)
         _ensure_defaults(app)
 
     return app
+
+
+def _bootstrap_schema(app) -> None:
+    """Ensure tables exist. Behavior depends on dialect.
+
+    - SQLite (dev): run create_all(); keeps the zero-config dev loop working.
+    - Postgres (prod): rely on `alembic upgrade head`. Log a warning if the
+      alembic_version table is missing so operators catch the mistake early.
+    """
+    from sqlalchemy import inspect
+
+    engine = db.engine
+    dialect = engine.dialect.name
+
+    if dialect == 'sqlite':
+        db.create_all()
+        return
+
+    inspector = inspect(engine)
+    if 'alembic_version' not in inspector.get_table_names():
+        app.logger.warning(
+            "Postgres target has no alembic_version table. "
+            "Run `alembic upgrade head` before serving traffic."
+        )
+        db.create_all()  # last-resort safety net; not the canonical path
 
 
 def _ensure_defaults(app):

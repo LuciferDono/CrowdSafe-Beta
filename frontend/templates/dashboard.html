@@ -1,50 +1,101 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block title %}Dashboard — CrowdSafe{% endblock %}
+{% block page_title %}Operations Dashboard{% endblock %}
 {% block content %}
+
+<!-- Hero stats -->
 <div class="row g-3 mb-4">
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
-            <div class="stat-label">Total People Detected</div>
-            <div class="stat-value" id="totalPeople">0</div>
+            <div class="stat-label"><i class="bi bi-people-fill"></i> People Detected</div>
+            <div class="stat-value stat-value-grad" id="totalPeople">0</div>
+            <div class="stat-trend" id="peopleTrend"></div>
         </div>
     </div>
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
-            <div class="stat-label">Active Cameras</div>
+            <div class="stat-label"><i class="bi bi-camera-video-fill"></i> Active Cameras</div>
             <div class="stat-value" id="activeCameras">0</div>
+            <div class="stat-trend text-dim"><span id="totalCameras">0</span> total</div>
         </div>
     </div>
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
-            <div class="stat-label">Unacknowledged Alerts</div>
+            <div class="stat-label"><i class="bi bi-bell-fill"></i> Unack Alerts</div>
             <div class="stat-value" id="unackAlerts">0</div>
+            <div class="stat-trend text-dim">rolling 24h</div>
         </div>
     </div>
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-6 col-xl-3">
         <div class="stat-card">
-            <div class="stat-label">Highest Risk Level</div>
+            <div class="stat-label"><i class="bi bi-shield-exclamation"></i> Risk Level</div>
             <div class="stat-value" id="maxRisk">SAFE</div>
+            <div class="stat-trend text-dim">peak across cameras</div>
         </div>
     </div>
 </div>
 
+<!-- Main grid -->
 <div class="row g-3">
-    <div class="col-lg-8">
-        <div class="panel">
+
+    <!-- LEFT: cameras + heatmap + forecast -->
+    <div class="col-xl-8">
+        <div class="panel mb-3">
             <div class="panel-header">
-                <h6>Active Camera Feeds</h6>
+                <div class="panel-title">Active Camera Feeds</div>
+                <a href="/cameras" class="text-dim" style="font-size:0.82rem">Manage <i class="bi bi-arrow-right"></i></a>
             </div>
             <div class="row g-3" id="cameraGrid">
-                <div class="col-12 text-center text-secondary py-5" id="emptyState">
-                    <p>No active cameras. Go to <a href="/cameras">Cameras</a> to add a video and start processing.</p>
+                <div class="col-12 text-center text-mute py-5" id="emptyState">
+                    <i class="bi bi-camera-video-off" style="font-size:2.2rem;opacity:0.3"></i>
+                    <p class="mt-3 mb-1">No active camera feeds.</p>
+                    <p class="small">Go to <a href="/cameras">Cameras</a> to add a source and start processing.</p>
                 </div>
             </div>
         </div>
+
+        <div class="row g-3">
+
+            <!-- Density Heatmap -->
+            <div class="col-md-6">
+                <div class="panel h-100">
+                    <div class="panel-header">
+                        <div>
+                            <div class="panel-title">Density Heatmap</div>
+                            <div style="font-size:0.72rem;color:var(--text-mute);margin-top:2px" id="heatmapCamName">—</div>
+                        </div>
+                        <span id="heatmapZoneBadge" style="font-size:0.72rem;color:var(--text-dim)"></span>
+                    </div>
+                    <canvas class="heatmap-canvas" id="heatmapCanvas" width="320" height="190"></canvas>
+                    <div style="font-size:0.74rem;color:var(--text-mute);margin-top:8px" id="heatmapMeta">
+                        Select an active camera to view spatial density.
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5-min Forecast -->
+            <div class="col-md-6">
+                <div class="panel h-100">
+                    <div class="panel-header">
+                        <div>
+                            <div class="panel-title">5-min Crowd Forecast</div>
+                            <div style="font-size:0.72rem;color:var(--text-mute);margin-top:2px" id="forecastCamName">—</div>
+                        </div>
+                        <span class="forecast-badge"><i class="bi bi-graph-up"></i> Predictive</span>
+                    </div>
+                    <div class="forecast-wrap" id="forecastWrap">
+                        <p class="text-mute small text-center py-4 mb-0">Select an active camera to view forecast.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </div>
-    <div class="col-lg-4">
+
+    <!-- RIGHT: system + alerts -->
+    <div class="col-xl-4">
         <div class="panel mb-3">
-            <div class="panel-header"><h6>System</h6></div>
+            <div class="panel-header"><div class="panel-title">System</div></div>
             <div class="d-flex gap-3 text-center">
                 <div class="flex-fill">
                     <div class="stat-value-sm" id="statCamTotal">0</div>
@@ -54,15 +105,25 @@
                     <div class="stat-value-sm" id="statMetrics">0</div>
                     <div class="stat-label-sm">Data Points</div>
                 </div>
+                <div class="flex-fill">
+                    <div class="stat-value-sm" id="statUptime">0m</div>
+                    <div class="stat-label-sm">Uptime</div>
+                </div>
             </div>
+            <div class="divider"></div>
+            <div style="font-size:0.78rem" class="text-dim" id="aiStatusDetail">Checking AI backends…</div>
         </div>
         <div class="panel">
-            <div class="panel-header"><h6>Recent Alerts</h6></div>
+            <div class="panel-header">
+                <div class="panel-title">Recent Alerts</div>
+                <a href="/alerts" class="text-dim" style="font-size:0.82rem">All <i class="bi bi-arrow-right"></i></a>
+            </div>
             <div id="alertFeed" class="alert-feed">
-                <p class="text-secondary small text-center mb-0">No recent alerts</p>
+                <p class="text-mute small text-center mb-0 py-4">No recent alerts</p>
             </div>
         </div>
     </div>
+
 </div>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>{% endblock %}

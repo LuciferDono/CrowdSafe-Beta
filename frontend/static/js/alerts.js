@@ -19,8 +19,8 @@ function getCameraLabel(camId) {
 }
 
 async function loadAlerts() {
-    const tbody = document.getElementById('alertsBody');
-    if (!tbody) return;
+    const grid = document.getElementById('alertsGrid');
+    if (!grid) return;
 
     if (Object.keys(_cameraCache).length === 0) await loadCameraNames();
 
@@ -37,91 +37,91 @@ async function loadAlerts() {
         const countEl = document.getElementById('alertCount');
         if (countEl) countEl.textContent = alerts.length + ' alerts';
 
-        while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+        while (grid.firstChild) grid.removeChild(grid.firstChild);
 
         if (alerts.length === 0) {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = 7;
-            td.className = 'text-center text-secondary py-4';
-            td.textContent = 'No alerts found';
-            tr.appendChild(td);
-            tbody.appendChild(tr);
+            const div = document.createElement('div');
+            div.style.gridColumn = '1 / -1';
+            div.className = 'text-center text-secondary py-5 w-100';
+            div.textContent = 'No alerts found';
+            grid.appendChild(div);
             return;
         }
 
         alerts.forEach(a => {
-            const tr = document.createElement('tr');
-
-            const tdTime = document.createElement('td');
-            tdTime.className = 'text-secondary small';
-            tdTime.textContent = a.timestamp ? toIST(a.timestamp) : '-';
-            tr.appendChild(tdTime);
-
-            const tdCam = document.createElement('td');
-            tdCam.textContent = getCameraLabel(a.camera_id);
-            tr.appendChild(tdCam);
-
-            const tdLevel = document.createElement('td');
-            const badge = document.createElement('span');
-            badge.className = 'badge';
-            if (a.risk_level === 'CRITICAL') badge.classList.add('bg-danger');
-            else if (a.risk_level === 'WARNING') badge.classList.add('bg-warning', 'text-dark');
-            else badge.classList.add('bg-secondary');
-            badge.textContent = a.risk_level || '-';
-            tdLevel.appendChild(badge);
-            tr.appendChild(tdLevel);
-
-            const tdMsg = document.createElement('td');
-            tdMsg.textContent = a.message || '-';
-            tr.appendChild(tdMsg);
-
-            const tdRisk = document.createElement('td');
-            tdRisk.textContent = a.risk_score ? (a.risk_score * 100).toFixed(0) + '%' : '-';
-            tr.appendChild(tdRisk);
-
-            const tdStatus = document.createElement('td');
-            if (a.resolved) {
-                tdStatus.textContent = 'Resolved';
-                tdStatus.className = 'text-secondary';
-            } else if (a.acknowledged) {
-                tdStatus.textContent = 'Acknowledged';
-                tdStatus.className = 'text-warning';
-            } else {
-                tdStatus.textContent = 'Open';
-                tdStatus.className = 'text-danger';
+            const card = document.createElement('div');
+            card.className = 'panel d-flex flex-column gap-3';
+            
+            // Risk specific styling
+            let badgeClass = 'bg-secondary text-white';
+            let borderClass = 'var(--border)';
+            
+            if (a.risk_level === 'CRITICAL') {
+                badgeClass = 'bg-danger text-white';
+                borderClass = 'var(--danger)';
+            } else if (a.risk_level === 'WARNING') {
+                badgeClass = 'bg-warning text-dark';
+                borderClass = 'var(--warn)';
+            } else if (a.risk_level === 'CAUTION') {
+                badgeClass = 'bg-info text-dark';
+                borderClass = 'var(--caution)';
             }
-            tr.appendChild(tdStatus);
-
-            const tdAct = document.createElement('td');
-            tdAct.className = 'text-end';
+            
+            card.style.borderTop = `3px solid ${borderClass}`;
+            
+            const timeStr = a.timestamp ? toIST(a.timestamp) : '-';
+            const riskScore = a.risk_score ? (a.risk_score * 100).toFixed(0) + '%' : '-';
+            
+            let statusHtml = '';
+            if (a.resolved) {
+                statusHtml = '<span class="text-success small fw-bold"><i class="bi bi-check-circle"></i> Resolved</span>';
+            } else if (a.acknowledged) {
+                statusHtml = '<span class="text-warning small fw-bold"><i class="bi bi-clock"></i> Acknowledged</span>';
+            } else {
+                statusHtml = '<span class="text-danger small fw-bold"><i class="bi bi-exclamation-circle"></i> Open</span>';
+            }
+            
+            let actionsHtml = '';
             if (!a.acknowledged) {
-                const ackBtn = document.createElement('button');
-                ackBtn.className = 'btn btn-outline-warning btn-sm me-1';
-                ackBtn.textContent = 'Ack';
-                ackBtn.addEventListener('click', () => ackAlert(a.alert_id || a.id));
-                tdAct.appendChild(ackBtn);
+                actionsHtml += `<button class="btn btn-outline-warning btn-sm" onclick="ackAlert('${a.alert_id || a.id}')">Acknowledge</button>`;
             }
             if (!a.resolved) {
-                const resBtn = document.createElement('button');
-                resBtn.className = 'btn btn-outline-success btn-sm';
-                resBtn.textContent = 'Resolve';
-                resBtn.addEventListener('click', () => resolveAlert(a.alert_id || a.id));
-                tdAct.appendChild(resBtn);
+                actionsHtml += `<button class="btn btn-outline-success btn-sm" onclick="resolveAlert('${a.alert_id || a.id}')">Resolve</button>`;
             }
-            tr.appendChild(tdAct);
-
-            tbody.appendChild(tr);
+            
+            card.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="badge ${badgeClass} fs-6">${a.risk_level || '-'}</span>
+                    <span class="text-secondary small"><i class="bi bi-clock me-1"></i>${timeStr}</span>
+                </div>
+                <div>
+                    <h6 class="text-white mb-2" style="font-size: 0.95rem;">
+                        <i class="bi bi-camera-video me-2 text-muted"></i>${getCameraLabel(a.camera_id)}
+                    </h6>
+                    <p class="text-light small mb-0" style="opacity: 0.85; line-height: 1.5;">${a.message || '-'}</p>
+                </div>
+                <div class="mt-auto pt-3 border-top d-flex justify-content-between align-items-end" style="border-color: var(--border-strong) !important;">
+                    <div>
+                        <div class="text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;">Risk Score</div>
+                        <div class="text-white fw-bold" style="font-size: 1.25rem;">${riskScore}</div>
+                    </div>
+                    <div class="d-flex flex-column align-items-end gap-2">
+                        ${statusHtml}
+                        <div class="d-flex gap-2">
+                            ${actionsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
         });
     } catch {
-        while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 7;
-        td.className = 'text-center text-danger py-4';
-        td.textContent = 'Failed to load alerts';
-        tr.appendChild(td);
-        tbody.appendChild(tr);
+        while (grid.firstChild) grid.removeChild(grid.firstChild);
+        const div = document.createElement('div');
+        div.style.gridColumn = '1 / -1';
+        div.className = 'text-center text-danger py-5 w-100';
+        div.textContent = 'Failed to load alerts';
+        grid.appendChild(div);
     }
 }
 

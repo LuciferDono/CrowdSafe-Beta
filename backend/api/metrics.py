@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, Response
 from backend.models.metric import Metric
 from backend.models.camera import Camera
 from backend.services.camera_manager import camera_manager
+from backend.utils.decorators import token_required
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
 
@@ -29,6 +30,7 @@ def _build_query(camera_id, start=None, end=None):
 
 
 @metrics_bp.route('/<camera_id>', methods=['GET'])
+@token_required
 def get_metrics(camera_id):
     limit = request.args.get('limit', 100, type=int)
     start = _parse_dt(request.args.get('start'))
@@ -41,6 +43,7 @@ def get_metrics(camera_id):
 
 
 @metrics_bp.route('/<camera_id>/current', methods=['GET'])
+@token_required
 def get_current(camera_id):
     proc = camera_manager.get_processor(camera_id)
     if proc and proc.is_running:
@@ -51,6 +54,7 @@ def get_current(camera_id):
 
 
 @metrics_bp.route('/<camera_id>/summary', methods=['GET'])
+@token_required
 def get_camera_summary(camera_id):
     start = _parse_dt(request.args.get('start'))
     end = _parse_dt(request.args.get('end'))
@@ -80,6 +84,7 @@ def get_camera_summary(camera_id):
 
 
 @metrics_bp.route('/<camera_id>/aggregate', methods=['GET'])
+@token_required
 def get_aggregate(camera_id):
     """Aggregate metrics by time interval (hourly/daily/weekly)."""
     start = _parse_dt(request.args.get('start'))
@@ -129,6 +134,7 @@ def get_aggregate(camera_id):
 
 
 @metrics_bp.route('/<camera_id>/export', methods=['GET'])
+@token_required
 def export_metrics(camera_id):
     """Export metrics as CSV, DOCX, PDF, or MD."""
     fmt = request.args.get('format', 'csv').lower()
@@ -200,6 +206,7 @@ def export_metrics(camera_id):
 
 
 @metrics_bp.route('/summary', methods=['GET'])
+@token_required
 def get_global_summary():
     status = camera_manager.get_all_status()
     total_people = 0

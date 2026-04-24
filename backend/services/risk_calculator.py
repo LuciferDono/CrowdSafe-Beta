@@ -44,9 +44,11 @@ class RiskCalculator:
 
         risk_score = base_score + pressure_boost + coherence_boost
 
-        # Boost for very large crowds
-        if count > 100:
-            risk_score = risk_score * 1.15
+        # Boost for very large crowds — thresholds configurable per venue
+        large_crowd_floor = getattr(self.config, 'RISK_LARGE_CROWD_COUNT', 100)
+        large_crowd_bump = getattr(self.config, 'RISK_LARGE_CROWD_BUMP', 1.15)
+        if count > large_crowd_floor:
+            risk_score = risk_score * large_crowd_bump
 
         risk_score = max(0.0, min(1.0, risk_score))
 
